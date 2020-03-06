@@ -45,6 +45,7 @@ def geometric_nbrs(idx, dM,eps = 1.):
 	
 	return nbr_idx
 
+#voxelized version
 def fast_marching_CC(pts, pt_nbrs):
 	"""
 	in: -point list (should be indices)
@@ -52,7 +53,26 @@ def fast_marching_CC(pts, pt_nbrs):
 	out: -list of connected components
 	"""
 	checked_array = np.zeros(len(pts))
-	
+
+	#preprocess pts, pt_nbrs
+	#set up dictionary
+	pt_dict = {}
+	idx = 0
+	for i in range(len(pts)):
+		pt_dict[pts[i]] = idx
+		idx += 1
+
+	new_pt_nbrs = []
+	#convert pt_nbrs to local idxs
+	for nbrs in pt_nbrs:
+		local_nbrs = []
+		for nbr in nbrs:
+			try:
+				local_nbrs.append(pt_dict[nbr])
+			except:
+				pass
+		new_pt_nbrs.append(local_nbrs)
+
 	CCs = []
 	while(sum(checked_array) < 2.*len(pts)):
 		try:
@@ -60,19 +80,27 @@ def fast_marching_CC(pts, pt_nbrs):
 		except:
 			next_idx = np.arange(len(pts))[checked_array == 0.][0]
 			CCs.append([pts[next_idx]])
-		
-		#set the next_idx to have been checked 
+
+
+		#set the next_idx to have been checked
 		checked_array[next_idx] = 2.
-		
-		#run through the neighbors of next_idx 
-		for nbr in pt_nbrs[next_idx]:
-			if nbr in pts:
-				nbr_idx = pts.index(nbr)
-				if checked_array[nbr_idx]<1.:
-					CCs[-1].append(nbr)
-					checked_array[nbr_idx] = 1.
-	
+
+		#run through the neighbors of next_idx
+		for nbr in new_pt_nbrs[next_idx]:
+			if checked_array[nbr]<1.:
+				CCs[-1].append(pts[nbr])
+				checked_array[nbr] = 1.
 	return CCs
+
+def get_centroid(pt_list):
+    cent = np.zeros(len(pt_list[0]))
+
+    for pt in pt_list:
+        for i in range(len(pt)):
+            cent[i] += pt[i]
+    cent /= len(pt_list)
+
+    return cent
 	
 """
 pts = [0,1,2,3,4]
@@ -241,38 +269,143 @@ plt.scatter(coords[:,0],-coords[:,1],s = sizes,c=cluster_cols)
 plt.show()
 
 #voxelized version 
-"""
-voxeled = voxelizer(pts,gauss_para=0.05)
+def fast_marching_CC(pts, pt_nbrs,noisy = 0):
+	"""
+	in: -point list (should be indices)
+		-point neighbors
+	out: -list of connected components
+	"""
+	checked_array = np.zeros(len(pts))
+	
+	#preprocess pts, pt_nbrs 
+	#set up dictionary
+	pt_dict = {}
+	idx = 0
+	for i in range(len(pts)):
+		pt_dict[pts[i]] = idx
+		idx += 1
+	
+	new_pt_nbrs = []
+	#convert pt_nbrs to local idxs 
+	for nbrs in pt_nbrs:
+		local_nbrs = []
+		for nbr in nbrs:
+			try:
+				local_nbrs.append(pt_dict[nbr])
+			except:
+				pass
+		new_pt_nbrs.append(local_nbrs)
+	
+	CCs = []
+	while(sum(checked_array) < 2.*len(pts)):
+		if noisy> 1:
+			sum_check_time = time.time()
+			print("checking the sum ({}) took {}".format(sum(checked_array),time.time()-sum_check_time))
+		if noisy >= 1:
+			global_time = time.time()
+		try:
+			if noisy>1:
+				t1 = time.time()
+				next_idx = np.arange(len(pts))[checked_array == 1.][0]
+				t2 = time.time()
+				#print("getting the index took: {}".format(t2-t1))
+			else:
+				next_idx = np.arange(len(pts))[checked_array == 1.][0]
+		except:
+			if noisy>1:
+				t1 = time.time()
+				next_idx = np.arange(len(pts))[checked_array == 0.][0]
+				CCs.append([pts[next_idx]])
+				t2 = time.time()
+				#print("getting the index took: {}".format(t2-t1))
+			else:
+				next_idx = np.arange(len(pts))[checked_array == 0.][0]
+				CCs.append([pts[next_idx]])
+			
+		
+		#set the next_idx to have been checked 
+		checked_array[next_idx] = 2.
+		
+		if noisy > 1:
+			local_time = time.time()
+			#run through the neighbors of next_idx 
+			for nbr in new_pt_nbrs[next_idx]:
+				if checked_array[nbr]<1.:
+					CCs[-1].append(pts[nbr])
+					checked_array[nbr] = 1.
+			print("neighbor checking took {}".format(time.time()-local_time))
+		else:
+			#run through the neighbors of next_idx 
+			for nbr in new_pt_nbrs[next_idx]:
+				if checked_array[nbr]<1.:
+					CCs[-1].append(pts[nbr])
+					checked_array[nbr] = 1.
+	if noisy >= 1:
+		print("total time taken was {}".format(time.time()-global_time))
+	return CCs
+
+def get_centroid(pt_list):
+    cent = np.zeros(len(pt_list[0]))
+
+    for pt in pt_list:
+        for i in range(len(pt)):
+            cent[i] += pt[i]
+    cent /= len(pt_list)
+
+    return cent
+
+voxeled = voxelizer(pts,gauss_para=0.1,num_grid_pts = [100,100])
 voxeled = voxeled/np.max(voxeled)
-"""
 
 plt.imshow(voxeled);plt.show()
-plt.imshow(voxeled>0.3);plt.show()
+plt.imshow(voxeled>0.27);plt.show()
 
-bits = (voxeled > 0.3).astype(int)
+time1 = time.time()
+bits = (voxeled > 0.27).astype(int)
 
 nonzeros = bits.nonzero()
 v_pts = np.array([[nonzeros[0][i],nonzeros[1][i]] for i in range(len(nonzeros[0]))])
 
-v_pts1 = v_pts[v_pts[:,0] <= 7]
+time2 = time.time()
+print("time to isolate non-zeros was {}".format(time2-time1))
+
+v_pts1 = v_pts[v_pts[:,0] <= 40]
 v_pts1 = [tuple(vp) for vp in v_pts1]
-v_CC1 = fast_marching_CC(list(v_pts1),[pixel_nbrs(idx) for idx in v_pts1])
+
+time3 = time.time()
+print("time to plot first non-zeros: {}".format(time3-time2))
+
+v_CC1 = fast_marching_CC(v_pts1,[pixel_nbrs(idx) for idx in v_pts1],noisy = 0)
+
+time4 = time.time()
+print("time to get CCs: {}".format(time4-time3))
+for cc in v_CC1:
+	print("found a CC of size {}".format(len(cc)))
 
 plot_mat = np.zeros((len(voxeled),len(voxeled)))
 for vp in v_pts1:
 	plot_mat[vp[0],vp[1]] = 1.
+	
+
 plt.imshow(plot_mat); plt.show()
 
-v_pts2 = v_pts[(v_pts[:,0] >= 3)&(v_pts[:,0]<=10)]
+v_pts2 = v_pts[(v_pts[:,0] >= 30)&(v_pts[:,0]<=70)]
 v_pts2 = [tuple(vp) for vp in v_pts2]
-v_CC2 = fast_marching_CC(v_pts2,[pixel_nbrs(idx) for idx in v_pts2])
+
+time3 = time.time()
+v_CC2 = fast_marching_CC(v_pts2,[pixel_nbrs(idx) for idx in v_pts2],noisy=0)
+
+time4 = time.time()
+print("time to get CCs: {}".format(time4-time3))
+for cc in v_CC2:
+	print("found a CC of size {}".format(len(cc)))
 
 plot_mat = np.zeros((len(voxeled),len(voxeled)))
 for vp in v_pts2:
 	plot_mat[vp[0],vp[1]] = 1.
 plt.imshow(plot_mat); plt.show()
 
-v_pts3 = v_pts[v_pts[:,0] >= 8]
+v_pts3 = v_pts[v_pts[:,0] >= 60]
 v_pts3 = [tuple(vp) for vp in v_pts3]
 v_CC3 = fast_marching_CC(v_pts3,[pixel_nbrs(idx) for idx in v_pts3])
 
@@ -302,3 +435,35 @@ for i in range(len(A)-1):
 plt.scatter(coords[:,0],-coords[:,1],s = sizes)
 			
 plt.show()
+
+#test with suryas images 
+fp = "C:/Users/hamilton.w/Downloads/TCGA-DH-A669-01Z-00-DX2-0752_seg68.png"
+
+start_time = time.time()
+#read image
+im = Image.open(fp).convert("L")
+arr = np.asarray(im)
+
+unique_entries = np.unique(arr)
+
+centroids = []
+
+#get segments
+for u in np.sort(unique_entries)[1:]:
+	nonzeros = np.nonzero((arr==u).astype("int"))
+	nonzeros = [tuple([nonzeros[0][i],nonzeros[1][i]]) for i in range(len(nonzeros[0]))]
+
+	#print("starting fast marching for sample {}".format(index_of_computation))
+
+	CCs = fast_marching_CC(nonzeros, [pixel_nbrs(pt) for pt in nonzeros])
+
+	#print("there are {} cc's".format(len(CCs)))
+
+	for cc in CCs:
+		#print("this cc has {} pixels".format(len(cc)))
+		centroids.append(get_centroid(cc))
+
+centroids = np.array(centroids)
+
+end_time = time.time()
+print("total segmentation time: {}".format(end_time-start_time))
